@@ -80,7 +80,7 @@ end
 
 local function externalLinkEscape(str, t)
     local nomatches = true
-    for m1, m2, m3 in gmatch(str, '(.*)%[(.*)%](.*)') do
+    for m1, m2, m3 in gmatch(str, '(.*)%[%w(.*)%](.*)') do
         if nomatches then t[#t + 1] = match(m1, '^(.-)!?$'); nomatches = false end
         if byte(m1, #m1) == byte '!' then
             t[#t + 1] = {type = 'img', attributes = {alt = m2}}
@@ -197,6 +197,7 @@ local PATTERN_RULE1 = "^%s?%s?%s?(-%s*-%s*-[%s-]*)$"
 local PATTERN_RULE2 = "^%s?%s?%s?(*%s**%s**[%s*]*)$"
 local PATTERN_RULE3 = "^%s?%s?%s?(_%s*_%s*_[%s_]*)$"
 local PATTERN_CODEBLOCK = "^%s*%`%`%`(.*)"
+local PATTERN_BLOCKALERT = "^%s*> %[!(.*)%]"
 local PATTERN_BLOCKQUOTE = "^%s*> (.*)$"
 local PATTERN_ULIST = "^%s*[%*%-] (.+)$"
 local PATTERN_OLIST = "^%s*%d+%. (.+)$"
@@ -211,6 +212,7 @@ local PATTERNS = {
     PATTERN_RULE2,
     PATTERN_RULE3,
     PATTERN_CODEBLOCK,
+    PATTERN_BLOCKALERT,
     PATTERN_BLOCKQUOTE,
     PATTERN_ULIST,
     PATTERN_OLIST,
@@ -349,6 +351,41 @@ local function readBlockQuote(pop, peek, tree, links)
     end
 end
 
+local function readBlockAlert(pop, peek, tree, links)
+    local line = peek()
+    local type_alert, txt = match(line, PATTERN_BLOCKALERT)
+    if type_alert then
+        local indent = getIndentLevel(line)
+        local ba = {
+            type = "div"
+        }
+        ba.attributes = {
+            class = format('markdown-alert markdown-alert-%s', lower(type_alert))
+        }
+
+        tree[#tree + 1] = ba
+        if match(pop(), PATTERN_BLOCKQUOTE) then
+            local bqh = {
+                type = "p"
+            }
+            bqh.attributes = {
+                class = 'markdown-alert-icon'
+            }
+            ba[#ba + 1] = bqh
+
+            local bqv = readFragment(pop, peek, links, function(l)
+                local tp = isSpecialLine(l)
+                return tp and tp ~= PATTERN_BLOCKQUOTE
+            end)
+
+            ba[#ba + 1] = bqv
+            ba[#ba + 1] = '\r\n'
+        end
+
+        return peek()
+    end
+end
+
 local function readList(pop, peek, tree, links, expectedIndent)
     if not peek() then return end
     if expectedIndent and getIndentLevel(peek()) ~= expectedIndent then return end
@@ -398,9 +435,11 @@ function readLineStream(stream, tree, links)
     tree = tree or {}
     links = links or {}
     while peek() do
-        if not readBlockQuote(pop, peek, tree, links) then
-            if not readList(pop, peek, tree, links) then
-                readSimple(pop, peek, tree, links)
+        if not readBlockAlert(pop, peek, tree, links) then
+            if not readBlockQuote(pop, peek, tree, links) then
+                if not readList(pop, peek, tree, links) then
+                    readSimple(pop, peek, tree, links)
+                end
             end
         end
     end
