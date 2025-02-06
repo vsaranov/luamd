@@ -355,21 +355,16 @@ local function readBlockAlert(pop, peek, tree, links)
     local line = peek()
     local type_alert, txt = match(line, PATTERN_BLOCKALERT)
     if type_alert then
-        local indent = getIndentLevel(line)
         local ba = {
-            type = "div"
-        }
-        ba.attributes = {
-            class = format('markdown-alert markdown-alert-%s', lower(type_alert))
+            type = "div",
+            attributes = { class = format('markdown-alert markdown-alert-%s', lower(type_alert)) }
         }
 
         tree[#tree + 1] = ba
         if match(pop(), PATTERN_BLOCKQUOTE) then
             local bqh = {
-                type = "p"
-            }
-            bqh.attributes = {
-                class = 'markdown-alert-icon'
+                type = "p",
+                attributes = { class = 'markdown-alert-icon' }
             }
             ba[#ba + 1] = bqh
 
