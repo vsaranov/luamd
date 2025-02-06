@@ -202,6 +202,7 @@ local PATTERN_BLOCKQUOTE = "^%s*> (.*)$"
 local PATTERN_ULIST = "^%s*[%*%-] (.+)$"
 local PATTERN_OLIST = "^%s*%d+%. (.+)$"
 local PATTERN_LINKDEF = "^%s*%[(.*)%]%s*%:%s*(.*)"
+local PATTERN_TABLE = "^%s*|(.*)|%s*$"
 
 -- List of patterns
 local PATTERNS = {
@@ -216,7 +217,8 @@ local PATTERNS = {
     PATTERN_BLOCKQUOTE,
     PATTERN_ULIST,
     PATTERN_OLIST,
-    PATTERN_LINKDEF
+    PATTERN_LINKDEF,
+    PATTERN_TABLE
 }
 
 local function isSpecialLine(line)
@@ -381,6 +383,71 @@ local function readBlockAlert(pop, peek, tree, links)
     end
 end
 
+local function readTable(pop, peek, tree, links)
+    local line = peek()
+    local row1, txt = match(line, PATTERN_TABLE)
+    if row1 then
+        local t = {
+            type = "table",
+            attributes = { class = 'table table-markdown' }
+        }
+
+        tree[#tree + 1] = t
+        local thead = { type = "thead" }
+        t[#t + 1] = thead
+        local tbody = { type = "tbody" }
+        t[#t + 1] = tbody
+
+        local thead_ok = false
+        while true do
+            line = pop()
+            if not line then break end
+            -- add header
+            if thead_ok == false then
+                thead_ok = true
+                if match(line, "^%s*|%s*%-%-%-") then
+                    local tr = { type = "tr" }
+                    thead[#thead + 1] = tr
+                    for col in row1:gmatch("[^|]+") do
+                        local th = { col, type = "th" }
+                        tr[#tr + 1] = th
+                    end
+                    line = pop()
+                else
+                    local tr = {
+                        type = "tr",
+                        attributes = { class = '' }
+                    }
+                    tbody[#tbody + 1] = tr
+                    for col in row1:gmatch("[^|]+") do
+                        local td = { col, type = "td" }
+                        tr[#tr + 1] = td
+                    end
+                end
+            end
+
+            local row, txt = match(line, PATTERN_TABLE)
+            if row then
+                local tr = {
+                    type = "tr",
+                    attributes = { class = '' }
+                }
+                tbody[#tbody + 1] = tr
+
+                for col in row:gmatch("[^|]+") do
+                    local td = { col, type = "td" }
+                    tr[#tr + 1] = td
+                end
+
+            else
+                break
+            end
+        end
+
+        return peek()
+    end
+end
+
 local function readList(pop, peek, tree, links, expectedIndent)
     if not peek() then return end
     if expectedIndent and getIndentLevel(peek()) ~= expectedIndent then return end
@@ -432,8 +499,10 @@ function readLineStream(stream, tree, links)
     while peek() do
         if not readBlockAlert(pop, peek, tree, links) then
             if not readBlockQuote(pop, peek, tree, links) then
-                if not readList(pop, peek, tree, links) then
-                    readSimple(pop, peek, tree, links)
+                if not readTable(pop, peek, tree, links) then
+                    if not readList(pop, peek, tree, links) then
+                        readSimple(pop, peek, tree, links)
+                    end
                 end
             end
         end
